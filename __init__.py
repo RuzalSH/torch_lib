@@ -16,85 +16,80 @@ import pandas as pd  # Для структурированного анализ�
 import os  # Для работы с файловой системой
 from torchvision.utils import make_grid  # Для вывода сетки изображений
 
-# Дополнительные настройки визуализации
-plt.style.use('ggplot')
-sns.set_theme(style="whitegrid")
-
-# Для фиксирования случайного поведения
+# ===================================================
+#  乱数固定用関数 (学籍番号下3桁を指定など)
+# ===================================================
 def torch_seed(seed=123):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.use_deterministic_algorithms = True
-    np.random.seed(seed)
-    print(f"Seed установлен: {seed}")
 
-# Рассчёт значения функции потерь
-def eval_loss(loader, device, net, criterion):
+# ===================================================
+#  学習(がくしゅう)用関数 - fit_model
+#   ・モデル名を引数に追加
+#   ・学習履歴を返却 (epoch, train_loss, train_acc, val_loss, val_acc)
+#   ・最後に学習結果を簡易表示
+# ===================================================
+def fit_model(model_name, net, optimizer, criterion, 
+              num_epochs, train_loader, test_loader, device, 
+              seed=123):
     """
-    Рассчитывает значение функции потерь для одного батча данных.
+    各種(かくしゅ)モデルを学習して履歴を返す関数。
+    historyの各列は以下の通り:
+      history[:,0] => epoch番号(1~)
+      history[:,1] => train_loss
+      history[:,2] => train_acc
+      history[:,3] => val_loss
+      history[:,4] => val_acc
     """
-    # Получаем данные из загрузчика
-    for images, labels in loader:
-        break
+    torch_seed(seed)  # 乱数固定(らんすうこてい) - 学籍番号など使う
 
-    # Переносим данные на устройство
-    inputs = images.to(device)
-    labels = labels.to(device)
-
-    # Рассчитываем предсказания
-    outputs = net(inputs)
-
-    # Вычисляем потери
-    loss = criterion(outputs, labels)
-
-    return loss
-
-# Функция для обучения модели
-def fit(net, optimizer, criterion, num_epochs, train_loader, test_loader, device, history):
-    """
-    Основная функция обучения. Поддерживает тренировку и валидацию на каждой эпохе.
-    """
-    base_epochs = len(history)
-
-    for epoch in range(base_epochs, num_epochs + base_epochs):
-        # Переменные для накопления результатов
+    history = []
+    # -----------------------------------------------------
+    # epoch(えぽっく)のループ
+    # -----------------------------------------------------
+    for epoch in range(num_epochs):
+        # 1エポックあたりの精度(せいど)計算用
         n_train_acc, n_val_acc = 0, 0
-        train_loss, val_loss = 0, 0
+        # 1エポックあたりの累積(るいせき)損失(そんしつ)
+        train_loss, val_loss = 0.0, 0.0
+        # データ件数(けんすう)
         n_train, n_test = 0, 0
 
-        # --- Тренировочная фаза ---
+        # ======== 訓練(くんれん)フェーズ ========
         net.train()
-        for inputs, labels in tqdm(train_loader, desc=f"Эпоха {epoch + 1}/{num_epochs + base_epochs}"):
-            train_batch_size = len(labels)
-            n_train += train_batch_size
+        for inputs, labels in tqdm(train_loader, desc=f"[{model_name}] Epoch {epoch+1}/{num_epochs} (Train)"):
+            # バッチサイズ
+            batch_size = len(labels)
+            n_train += batch_size
 
-            # Перенос данных на устройство
+            # GPUヘ転送
             inputs = inputs.to(device)
             labels = labels.to(device)
 
-            # Сбрасываем градиенты
+            # 勾配(こうばい)の初期化(しょきか)
             optimizer.zero_grad()
 
-            # Вычисляем предсказания
+            # 順伝播(じゅんでんぱ) + 損失(そんしつ)計算
             outputs = net(inputs)
-
-            # Считаем потери
             loss = criterion(outputs, labels)
-            loss.backward()
 
-            # Обновляем параметры
+            # 逆伝播(ぎゃくでんぱ) + パラメータ更新
+            loss.backward()
             optimizer.step()
 
-            # Подсчёт точных предсказаний
+            # 予測ラベル算出
             predicted = torch.max(outputs, 1)[1]
-            train_loss += loss.item() * train_batch_size
+
+            # 損失合計と正解数(せいかいすう)合計
+            train_loss += loss.item() * batch_size
             n_train_acc += (predicted == labels).sum().item()
 
-        # --- Фаза валидации ---
+        # ======== 評価(ひょうか)フェーズ ========
         net.eval()
         with torch.no_grad():
-            for inputs_test, labels_test in test_loader:
+            for inputs_test, labels_test in tqdm(test_loader, desc=f"[{model_name}] Epoch {epoch+1}/{num_epochs} (Eval)"):
                 test_batch_size = len(labels_test)
                 n_test += test_batch_size
 
@@ -104,89 +99,145 @@ def fit(net, optimizer, criterion, num_epochs, train_loader, test_loader, device
                 outputs_test = net(inputs_test)
                 loss_test = criterion(outputs_test, labels_test)
 
+                # 予測(よそく)
                 predicted_test = torch.max(outputs_test, 1)[1]
+
+                # 損失合計と正解数合計
                 val_loss += loss_test.item() * test_batch_size
                 n_val_acc += (predicted_test == labels_test).sum().item()
 
-        # Рассчёт средней потери и точности
-        train_acc = n_train_acc / n_train
-        val_acc = n_val_acc / n_test
+        # ======== 損失・精度の算出 ========
         avg_train_loss = train_loss / n_train
-        avg_val_loss = val_loss / n_test
+        avg_val_loss   = val_loss / n_test
+        train_acc      = n_train_acc / n_train
+        val_acc        = n_val_acc / n_test
 
-        # Логирование
-        print(f"Эпоха [{epoch + 1}/{num_epochs + base_epochs}], Потери: {avg_train_loss:.5f}, Точность: {train_acc:.5f}, "
-              f"Валидация: Потери: {avg_val_loss:.5f}, Точность: {val_acc:.5f}")
-        
-        # Обновление истории
-        history = np.vstack((history, np.array([epoch + 1, avg_train_loss, train_acc, avg_val_loss, val_acc])))
+        print(f"[{model_name}] Epoch {epoch+1}/{num_epochs} -> "
+              f"train_loss: {avg_train_loss:.5f}, train_acc: {train_acc:.5f}, "
+              f"val_loss: {avg_val_loss:.5f}, val_acc: {val_acc:.5f}")
+
+        history.append([epoch+1, avg_train_loss, train_acc, avg_val_loss, val_acc])
+
+    history = np.array(history)
+    # ===========================================================
+    # 学習終了後(しゅうりょうご)に最終(さいしゅう)損失・精度だけまとめて表示
+    # ===========================================================
+    print(f"\n◆◆ [{model_name}] 最終結果(さいしゅうけっか) ◆◆")
+    print(f"   [Epoch {num_epochs}] val_loss: {history[-1,3]:.5f}, val_acc: {history[-1,4]:.5f}\n")
 
     return history
 
-# Визуализация истории обучения
-def evaluate_history(history, model_name="Model"):
+# ===================================================
+#  単一(たんいつ)モデルの学習履歴(りれき)を可視化
+#  (今回は複数(ふくすう)モデルを比較(ひかく)するので拡張版を別途用意)
+# ===================================================
+def evaluate_history_single(history, model_name="Model"):
     """
-    Отображает графики потерь и точности, с заголовком для идентификации модели.
+    受け取ったhistory( shape: [epoch, 5] )を元に、
+    train_loss, val_loss, train_acc, val_acc の学習曲線(がくしゅうきょくせん)をプロット。
     """
-    print(f"[{model_name}]")
-    print(f"Начальные значения: Потери: {history[0, 3]:.5f}, Точность: {history[0, 4]:.5f}")
-    print(f"Конечные значения: Потери: {history[-1, 3]:.5f}, Точность: {history[-1, 4]:.5f}")
+    epochs = history[:,0]
+    train_loss = history[:,1]
+    train_acc  = history[:,2]
+    val_loss   = history[:,3]
+    val_acc    = history[:,4]
 
-    num_epochs = len(history)
-    unit = max(1, num_epochs // 10)
-
-    # График потерь
-    plt.figure(figsize=(10, 6))
-    plt.plot(history[:, 0], history[:, 1], label="Тренировочные потери")
-    plt.plot(history[:, 0], history[:, 3], label="Валидационные потери")
-    plt.title(f"Потери ({model_name})")
-    plt.xlabel("Эпохи")
-    plt.ylabel("Потери")
+    # 損失(そんしつ)グラフ
+    plt.figure(figsize=(9, 4))
+    plt.plot(epochs, train_loss, label=f"{model_name} - Train Loss")
+    plt.plot(epochs, val_loss,   label=f"{model_name} - Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title(f"{model_name} Loss")
     plt.legend()
-    plt.grid(True)
     plt.show()
 
-    # График точности
-    plt.figure(figsize=(10, 6))
-    plt.plot(history[:, 0], history[:, 2], label="Тренировочная точность")
-    plt.plot(history[:, 0], history[:, 4], label="Валидационная точность")
-    plt.title(f"Точность ({model_name})")
-    plt.xlabel("Эпохи")
-    plt.ylabel("Точность")
+    # 精度(せいど)グラフ
+    plt.figure(figsize=(9, 4))
+    plt.plot(epochs, train_acc,  label=f"{model_name} - Train Acc")
+    plt.plot(epochs, val_acc,    label=f"{model_name} - Val Acc")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title(f"{model_name} Accuracy")
     plt.legend()
-    plt.grid(True)
     plt.show()
 
-# Визуализация изображений и предсказаний
-def show_images_labels(loader, classes, net, device, model_name="Model"):
+# ===================================================
+#  複数(ふくすう)モデルの学習履歴をまとめて比較(ひかく)してプロット
+#   ・Validation Loss編
+#   ・Validation Accuracy編
+# ===================================================
+def compare_histories(histories_dict):
     """
-    Отображает изображения и их предсказания, с указанием имени модели.
+    histories_dict: { "model_name": history_ndarray, ... } の形で渡す。
+      historyの各列は [epoch, train_loss, train_acc, val_loss, val_acc] を想定。
     """
+    plt.figure(figsize=(10,6))
+    for model_name, hist in histories_dict.items():
+        plt.plot(hist[:,0], hist[:,3], label=f"{model_name} ValLoss")
+    plt.title("Validation Loss Comparison")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.show()
+
+    plt.figure(figsize=(10,6))
+    for model_name, hist in histories_dict.items():
+        plt.plot(hist[:,0], hist[:,4], label=f"{model_name} ValAcc")
+    plt.title("Validation Accuracy Comparison")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.show()
+
+# ===================================================
+#  画像(がぞう)とラベルを表示(ひょうじ)する関数
+#   ・推定結果(すいていけっか)が正しければ黒、不正解なら赤色に
+#   ・上部に "正解:推定" と表示、色分け
+#   ・モデル名をタイトルに表示(任意)
+# ===================================================
+def show_images_labels(model_name, loader, classes, net, device):
+
+    # DataLoaderから最初の1バッチを取得
     for images, labels in loader:
         break
 
+    # 表示(ひょうじ)数は 50個 とバッチサイズのうち小さい方
     n_size = min(len(images), 50)
 
-    if net is not None:
+    # 推定計算(すいていけいさん)
+    net.eval()
+    with torch.no_grad():
         inputs = images.to(device)
         labels = labels.to(device)
         outputs = net(inputs)
         predicted = torch.max(outputs, 1)[1]
 
-    plt.figure(figsize=(20, 10))
-    plt.suptitle(f"Результаты предсказаний ({model_name})", fontsize=16)
+    plt.figure(figsize=(20, 15))
+    plt.suptitle(f"Test Results - {model_name}", fontsize=24)  # 全体タイトルにモデル名を表示
     for i in range(n_size):
         ax = plt.subplot(5, 10, i + 1)
-        label_name = classes[labels[i]]
-        if net is not None:
-            predicted_name = classes[predicted[i]]
-            color = 'green' if label_name == predicted_name else 'red'
-            ax.set_title(f"{label_name}:{predicted_name}", color=color, fontsize=10)
-        else:
-            ax.set_title(label_name, fontsize=10)
+        label_idx = labels[i].item()
+        pred_idx  = predicted[i].item()
 
-        img = np.transpose(images[i].cpu().numpy(), (1, 2, 0))
-        img = (img + 1) / 2
-        plt.imshow(img)
-        ax.axis('off')
+        label_name = classes[label_idx]
+        predicted_name = classes[pred_idx]
+
+        # 正解/不正解で色を分ける
+        if label_idx == pred_idx:
+            c = 'black'
+        else:
+            c = 'red'
+
+        ax.set_title(f"{label_name}:{predicted_name}", color=c, fontsize=14)
+
+        # Tensor -> Numpy
+        img_np = images[i].numpy().copy()
+        # (C, H, W) -> (H, W, C)
+        img_np = np.transpose(img_np, (1, 2, 0))
+        # [-1, 1] -> [0, 1] (もし学習時にこう正規化したなら)
+        img_np = (img_np + 1)/2
+
+        plt.imshow(img_np)
+        ax.set_axis_off()
     plt.show()
