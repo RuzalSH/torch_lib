@@ -20,7 +20,7 @@ from torchvision import models
 # ===================================================
 #  乱数固定用関数 (学籍番号下3桁を指定など)
 # ===================================================
-def torch_seed(seed=123):
+def torch_seed(seed=37):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -34,7 +34,7 @@ def torch_seed(seed=123):
 # ===================================================
 def fit_model(model_name, net, optimizer, criterion, 
               num_epochs, train_loader, test_loader, device, 
-              seed=123):
+              seed=37):
     """
     各種(かくしゅ)モデルを学習して履歴を返す関数。
     historyの各列は以下の通り:
