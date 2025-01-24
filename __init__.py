@@ -11,10 +11,10 @@ import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
 import torchvision.datasets as datasets
 from tqdm.notebook import tqdm
-import seaborn as sns  # Для улучшенных визуализаций
-import pandas as pd  # Для структурированного анализа данных
-import os  # Для работы с файловой системой
-from torchvision.utils import make_grid  # Для вывода сетки изображений
+import seaborn as sns 
+import pandas as pd
+import os
+from torchvision.utils import make_grid
 from torchvision import models
 
 # ===================================================
@@ -123,7 +123,7 @@ def fit_model(model_name, net, optimizer, criterion,
     # ===========================================================
     # 学習終了後(しゅうりょうご)に最終(さいしゅう)損失・精度だけまとめて表示
     # ===========================================================
-    print(f"\n◆◆ [{model_name}] 最終結果(さいしゅうけっか) ◆◆")
+    print(f"\n◆◆ [{model_name}] 最終結果 ◆◆")
     print(f"   [Epoch {num_epochs}] val_loss: {history[-1,3]:.5f}, val_acc: {history[-1,4]:.5f}\n")
 
     return history
@@ -135,7 +135,7 @@ def fit_model(model_name, net, optimizer, criterion,
 def evaluate_history_single(history, model_name="Model"):
     """
     受け取ったhistory( shape: [epoch, 5] )を元に、
-    train_loss, val_loss, train_acc, val_acc の学習曲線(がくしゅうきょくせん)をプロット。
+    train_loss, val_loss, train_acc, val_acc の学習曲線をプロット。
     """
     epochs = history[:,0]
     train_loss = history[:,1]
