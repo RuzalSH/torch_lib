@@ -15,6 +15,7 @@ import seaborn as sns  # Для улучшенных визуализаций
 import pandas as pd  # Для структурированного анализа данных
 import os  # Для работы с файловой системой
 from torchvision.utils import make_grid  # Для вывода сетки изображений
+from torchvision import models
 
 # ===================================================
 #  乱数固定用関数 (学籍番号下3桁を指定など)
