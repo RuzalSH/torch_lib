@@ -199,14 +199,20 @@ def compare_histories(histories_dict):
 # ===================================================
 def show_images_labels(model_name, loader, classes, net, device):
 
-    # DataLoaderから最初の1バッチを取得
+    # 複数バッチから50枚の画像を収集
+    images_list, labels_list = [], []
     for images, labels in loader:
-        break
+        images_list.append(images)
+        labels_list.append(labels)
+        # 合計が50枚になったら終了
+        if len(torch.cat(images_list)) >= 50:
+            break
 
-    # 表示(ひょうじ)数は 50個 とバッチサイズのうち小さい方
-    n_size = min(len(images), 50)
+    # 50枚の画像を取り出す
+    images = torch.cat(images_list)[:50]
+    labels = torch.cat(labels_list)[:50]
 
-    # 推定計算(すいていけいさん)
+    # モデルで予測
     net.eval()
     with torch.no_grad():
         inputs = images.to(device)
@@ -214,31 +220,25 @@ def show_images_labels(model_name, loader, classes, net, device):
         outputs = net(inputs)
         predicted = torch.max(outputs, 1)[1]
 
+    # グラフ表示
     plt.figure(figsize=(20, 15))
-    plt.suptitle(f"Test Results - {model_name}", fontsize=24)  # 全体タイトルにモデル名を表示
-    for i in range(n_size):
+    plt.suptitle(f"Test Results - {model_name}", fontsize=24)  # モデル名を全体タイトルに表示
+    for i in range(len(images)):
         ax = plt.subplot(5, 10, i + 1)
         label_idx = labels[i].item()
-        pred_idx  = predicted[i].item()
+        pred_idx = predicted[i].item()
 
         label_name = classes[label_idx]
         predicted_name = classes[pred_idx]
 
-        # 正解/不正解で色を分ける
-        if label_idx == pred_idx:
-            c = 'black'
-        else:
-            c = 'red'
+        # 正解なら黒、不正解なら赤
+        c = 'black' if label_idx == pred_idx else 'red'
 
         ax.set_title(f"{label_name}:{predicted_name}", color=c, fontsize=14)
 
-        # Tensor -> Numpy
-        img_np = images[i].numpy().copy()
-        # (C, H, W) -> (H, W, C)
-        img_np = np.transpose(img_np, (1, 2, 0))
-        # [-1, 1] -> [0, 1] (もし学習時にこう正規化したなら)
-        img_np = (img_np + 1)/2
-
+        # Tensor → NumPy 変換
+        img_np = images[i].cpu().numpy().transpose((1, 2, 0))
+        img_np = (img_np + 1) / 2  # 正規化解除
         plt.imshow(img_np)
-        ax.set_axis_off()
+        ax.axis("off")
     plt.show()
